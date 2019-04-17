@@ -1,6 +1,6 @@
-FROM python:3.8.0a3-alpine3.9
+FROM python:3
 COPY . .
-RUN pip3 install -r requirements.txt
-EXPOSE 8000
-RUN ls
-CMD python app.py
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN python -c "from fake_useragent import FakeUserAgent; FakeUserAgent();"
+EXPOSE 5000
+CMD gunicorn -b 0.0.0.0:5000 app:app

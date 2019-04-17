@@ -3,7 +3,7 @@ from redis import Redis
 from werkzeug.exceptions import HTTPException
 from flask import Blueprint, abort, current_app, g, jsonify, request
 
-from service import Student, InvalidCredential, CredentialRequired
+from service import Student, InvalidCredential, CredentialRequired, ServiceError
 from auth_token import AuthToken, BadToken
 
 v1 = Blueprint(__name__, __name__, url_prefix='/')
@@ -19,15 +19,17 @@ def connect_db():
 @v1.route('/login', methods=['POST'])
 def login():
     input_data = request.get_json()
-    username = input_data.get('username')
-    password = input_data.get('password')
-    if username is None or password is None:
+    username = input_data.get('username', '')
+    password = input_data.get('password', '')
+    if username == '' or password == '':
         abort(400)
     student = Student()
     try:
         student.login(username, password)
     except InvalidCredential as error:
         abort(401, str(error))
+    except Exception as error:
+        abort(500, str(error))
     g.db.set('shu-library-{}'.format(username), pickle.dumps(student), ex=3600)
     return jsonify({
         'token': AuthToken().generate_jwt(username)
@@ -46,13 +48,17 @@ def loans():
         if raw_student_data is None:
             abort(403)
         student = pickle.loads(raw_student_data)
+        _loans = student.get_loans()
+        g.db.set('shu-library-{}'.format(username), pickle.dumps(student), ex=3600)
         return jsonify({
-            'histories': student.get_loans()
+            'loans': _loans
         })
     except CredentialRequired:
         abort(403)
     except BadToken as error:
         abort(403, str(error))
+    except Exception as error:
+        abort(500, str(error))
 
 
 @v1.route('/histories', methods=['GET'])
@@ -67,17 +73,21 @@ def histories():
         if raw_student_data is None:
             abort(403)
         student = pickle.loads(raw_student_data)
+        _histories = student.get_histories()
+        g.db.set('shu-library-{}'.format(username), pickle.dumps(student), ex=3600)
         return jsonify({
-            'histories': student.get_histories()
+            'histories': _histories
         })
     except CredentialRequired:
         abort(403)
     except BadToken as error:
         abort(403, str(error))
+    except Exception as error:
+        abort(500, str(error))
 
 
 @v1.errorhandler(HTTPException)
 def errorhandler(error):
     return jsonify({
         'error': error.description
-    })
+    }), error.code
